@@ -33,6 +33,7 @@ let
       auth_mechanisms = plain login
       service auth {
         user = root
+        ${cfg.appendAuth}
       }
       userdb {
         driver = passwd
@@ -114,6 +115,15 @@ in
       showPAMFailure = mkOption {
         default = false;
         description = "Show the PAM failure message on authentication error (useful for OTPW).";
+      };
+
+      appendAuth = mkOption {
+        type = types.lines;
+        default = "";
+        description = ''
+            Configuration lines to be appended inside of the service auth {} block. Can be called
+            more than once, with additional calls being concatenated onto the end
+        '';
       };
     };
 

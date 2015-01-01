@@ -71,7 +71,10 @@ let
     + optionalString (cfg.recipientDelimiter != null) ''
       recipient_delimiter = ${cfg.recipientDelimiter}
     ''
-    + optionalString (cfg.sslCert != "" && cfg.sslCACert != "" && cfg.sslKey != "") ''
+    + optionalString (cfg.smtpdRelayRestrictions != null) ''
+      smtpd_relay_restrictions = ${concatStringsSep ", " cfg.smtpdRelayRestrictions}
+    ''
+    + optionalString cfg.enableSsl ''
 
       smtp_tls_CAfile = ${cfg.sslCACert}
       smtp_tls_cert_file = ${cfg.sslCert}
@@ -85,6 +88,11 @@ let
 
       smtpd_use_tls = yes
     ''
+    + optionalString(cfg.useDovecotSaslAuth) ''
+      smtpd_sasl_type = dovecot
+      smtpd_sasl_path = /var/postfix/private/auth
+      smtpd_sasl_auth_enable = yes
+    ''
     + cfg.extraConfig;
 
   masterCf = ''
@@ -93,11 +101,17 @@ let
     #               (yes)   (yes)   (yes)   (never) (100)
     # ==========================================================================
     smtp      inet  n       -       n       -       -       smtpd
-    #submission inet n       -       n       -       -       smtpd
-    #  -o smtpd_tls_security_level=encrypt
-    #  -o smtpd_sasl_auth_enable=yes
-    #  -o smtpd_client_restrictions=permit_sasl_authenticated,reject
-    #  -o milter_macro_daemon_name=ORIGINATING
+  '' + optionalString(cfg.useDovecotSaslAuth) ''
+    submission inet n       -       n       -       -       smtpd
+      -o smtpd_sasl_auth_enable=yes
+      -o smtpd_sasl_security_options=noanonymous
+      -o smtpd_sasl_local_domain=$mydomain
+      -o smtpd_sender_login_maps=$local_recipient_maps
+      -o smtpd_client_restrictions=permit_sasl_authenticated,reject_non_fqdn_recipient,reject
+      -o smtpd_sender_restrictions=reject_sender_login_mismatch
+      ${optionalString cfg.enableSsl "-o smtpd_tls_security_level=encrypt"}
+  ''
+  + ''
     pickup    fifo  n       -       n       60      1       pickup
     cleanup   unix  n       -       n       -       0       cleanup
     qmgr      fifo  n       -       n       300     1       qmgr
@@ -112,7 +126,7 @@ let
     proxywrite unix -       -       n       -       1       proxymap
     smtp      unix  -       -       n       -       -       smtp
     relay     unix  -       -       n       -       -       smtp
-    	      -o smtp_fallback_relay=
+            -o smtp_fallback_relay=
     #       -o smtp_helo_timeout=5 -o smtp_connect_timeout=5
     showq     unix  n       -       n       -       -       showq
     error     unix  -       -       n       -       -       error
@@ -286,6 +300,11 @@ in
         ";
       };
 
+      enableSsl = mkOption {
+        default = false;
+        description = "Whether to enable SSL. Make sure to define the SSL cert paths as well!";
+      };
+
       sslCert = mkOption {
         default = "";
         description = "SSL certificate to use.";
@@ -322,9 +341,21 @@ in
         description = "Extra lines to append to the generated master.cf file.";
       };
 
-    };
+      useDovecotSaslAuth = mkOption {
+        default = false;
+        description = ''
+	  Whether to use Dovecot for SASL SMTP auth.
+	  Note: This enables dovecot2 and makes Postfix listen on SMTP submission
+	  port 587 for SASL-authenticated email submissions
+	'';
+      };
 
-  };
+      smtpdRelayRestrictions = mkOption {
+        default = null;
+        description = "List of SMTP relay restrictions (Postfix's smtpd_relay_restrictions setting) settings";
+      };
+   };
+};
 
 
   ###### implementation
@@ -366,6 +397,17 @@ in
         }
       ];
 
+    services.dovecot2 = mkIf config.services.postfix.useDovecotSaslAuth {
+      enable = true;
+      appendAuth = ''
+        unix_listener /var/postfix/private/auth {
+          mode = 0660
+          user = ${user}
+          group = ${group}
+        }
+      '';
+    };
+
     jobs.postfix =
       # I copy _lots_ of shipped configuration filed
       # that can be left as is. I am afraid the exact
@@ -381,9 +423,11 @@ in
 
         preStart =
           ''
-            if ! [ -d /var/spool/postfix ]; then
-              ${pkgs.coreutils}/bin/mkdir -p /var/spool/mail /var/postfix/conf /var/postfix/queue
-            fi
+            ${pkgs.coreutils}/bin/mkdir -p /var/spool/mail /var/postfix/conf /var/postfix/queue
+          '' + optionalString config.services.postfix.useDovecotSaslAuth ''
+            ${pkgs.coreutils}/bin/mkdir -p /var/postfix/private
+          ''
+          + ''
 
             ${pkgs.coreutils}/bin/chown -R ${user}:${group} /var/postfix
             ${pkgs.coreutils}/bin/chown -R ${user}:${setgidGroup} /var/postfix/queue
