@@ -50,9 +50,13 @@ let
     + optionalString (cfg.relayDomains != null) ''
       relay_domains = ${concatStringsSep ", " cfg.relayDomains}
     ''
+    + optionalString (cfg.localRecipientMaps != null) ''
+      local_recipient_maps = ${concatStringsSep " " cfg.localRecipientMaps}
+    ''
+    + optionalString (cfg.virtual != "") ''
+      virtual_alias_maps = hash:/etc/postfix/virtual
+    ''
     + ''
-      local_recipient_maps =
-
       relayhost = ${if cfg.lookupMX || cfg.relayHost == "" then
           cfg.relayHost
         else
@@ -64,7 +68,10 @@ let
 
       setgid_group = ${setgidGroup}
     ''
-    + optionalString (cfg.sslCert != "") ''
+    + optionalString (cfg.recipientDelimiter != null) ''
+      recipient_delimiter = ${cfg.recipientDelimiter}
+    ''
+    + optionalString (cfg.sslCert != "" && cfg.sslCACert != "" && cfg.sslKey != "") ''
 
       smtp_tls_CAfile = ${cfg.sslCACert}
       smtp_tls_cert_file = ${cfg.sslCert}
@@ -77,11 +84,6 @@ let
       smtpd_tls_key_file = ${cfg.sslKey}
 
       smtpd_use_tls = yes
-
-      recipientDelimiter = ${cfg.recipientDelimiter}
-    ''
-    + optionalString (cfg.virtual != "") ''
-      virtual_alias_maps = hash:/etc/postfix/virtual
     ''
     + cfg.extraConfig;
 
@@ -236,6 +238,14 @@ in
         ";
       };
 
+      localRecipientMaps = mkOption {
+        default = null;
+        description = "
+          List of lookup table files containing local recipients.
+          Sets Postifix's local_recipient_maps value
+        ";
+      };
+
       relayHost = mkOption {
         default = "";
         description = "
@@ -292,7 +302,7 @@ in
       };
 
       recipientDelimiter = mkOption {
-        default = "";
+        default = null;
         example = "+";
         description = "
           Delimiter for address extension: so mail to user+test can be handled by ~user/.forward+test
