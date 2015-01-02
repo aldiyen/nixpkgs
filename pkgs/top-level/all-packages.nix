@@ -7555,6 +7555,8 @@ let
 
   dovecot_pigeonhole = callPackage ../servers/mail/dovecot-pigeonhole { };
 
+  dspam = callPackage ../servers/mail/dspam { };
+
   etcd = callPackage ../servers/etcd { };
 
   ejabberd = callPackage ../servers/xmpp/ejabberd {
