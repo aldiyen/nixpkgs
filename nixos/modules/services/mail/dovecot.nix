@@ -12,12 +12,13 @@ let
 
       protocols = ${optionalString cfg.enableImap "imap"} ${optionalString cfg.enablePop3 "pop3"}
     ''
-    + (if cfg.sslServerCert!="" then
+    + (if cfg.enableSsl then
     ''
       ssl_cert = <${cfg.sslServerCert}
       ssl_key = <${cfg.sslServerKey}
       ssl_ca = <${cfg.sslCACert}
       disable_plaintext_auth = yes
+      ssl = required
     '' else ''
       ssl = no
       disable_plaintext_auth = no
@@ -95,6 +96,11 @@ in
         description = ''
           Location that dovecot will use for mail folders. Dovecot mail_location option.
         '';
+      };
+
+      enableSsl = mkOption {
+        default = false;
+        description = "Whether to enable SSL. Make sure to define the SSL cert paths as well!";
       };
 
       sslServerCert = mkOption {
