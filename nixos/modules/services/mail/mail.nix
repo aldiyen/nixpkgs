@@ -2,6 +2,11 @@
 
 with lib;
 
+let
+  cfg = config.services.mail;
+
+in
+
 {
 
   ###### interface
@@ -18,16 +23,35 @@ with lib;
         '';
       };
 
+      createVirtualMailboxOwner = mkOption {
+        default = false;
+        description = ''
+          Creates the vmail user for use with virtual mailbox owner setups
+          with certain Mail Delivery Agents
+        '';
+      };
+
     };
 
   };
 
   ###### implementation
 
-  config = mkIf (config.services.mail.sendmailSetuidWrapper != null) {
+  config = mkMerge [
+    (mkIf (cfg.sendmailSetuidWrapper != null) {
 
-    security.setuidOwners = [ config.services.mail.sendmailSetuidWrapper ];
+      security.setuidOwners = [ cfg.sendmailSetuidWrapper ];
 
-  };
-
+    })
+    (mkIf (cfg.createVirtualMailboxOwner) {
+      users.extraUsers.vmail = {
+        description = "Virtual mailbox owner";
+        uid = config.ids.uids.vmail;
+        group = "vmail";
+      };
+      users.extraGroups.vmail = {
+        gid = config.ids.gids.vmail;
+      };
+    })
+  ];
 }

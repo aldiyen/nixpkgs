@@ -90,8 +90,19 @@ let
     ''
     + optionalString(cfg.useDovecotSaslAuth) ''
       smtpd_sasl_type = dovecot
-      smtpd_sasl_path = /var/postfix/private/auth
+      smtpd_sasl_path = /var/postfix/private/auth-client
       smtpd_sasl_auth_enable = yes
+    ''
+    + optionalString (cfg.virtualTransport != null) ''
+      virtual_transport = ${cfg.virtualTransport}
+    ''  
+    + optionalString (cfg.mailboxTransport != null) ''
+      mailbox_transport = ${cfg.mailboxTransport}
+    ''
+    # this part doesn't strictly work -- I think I need to use virtual_alias and other virtual_ settings instead of mail_spool_directory adn stuff
+    + optionalString cfg.useVirtualMailboxOwner ''
+      virtual_uid_maps = static:${toString config.ids.uids.vmail}
+      virtual_gid_maps = static:${toString config.ids.gids.vmail}
     ''
     + cfg.extraConfig;
 
@@ -101,7 +112,8 @@ let
     #               (yes)   (yes)   (yes)   (never) (100)
     # ==========================================================================
     smtp      inet  n       -       n       -       -       smtpd
-  '' + optionalString(cfg.useDovecotSaslAuth) ''
+  ''
+  + optionalString cfg.useDovecotSaslAuth ''
     submission inet n       -       n       -       -       smtpd
       -o smtpd_sasl_auth_enable=yes
       -o smtpd_sasl_security_options=noanonymous
@@ -137,6 +149,13 @@ let
     lmtp      unix  -       -       n       -       -       lmtp
     anvil     unix  -       -       n       -       1       anvil
     scache    unix  -       -       n       -       1       scache
+  ''
+  + optionalString cfg.useDspam ''
+    dspam     unix  -       n       n       -       -       pipe
+      flags=DRhu user=dspam:dspam argv=${pkgs.dspam}/bin/dspam --deliver=innocent,spam --user \${recipient} -f \${sender} -d \${recipient}
+  ''
+  + ''
+    ${cfg.appendMasterConf}
     ${cfg.extraMasterConf}
   '';
 
@@ -158,7 +177,6 @@ let
 in
 
 {
-
   ###### interface
 
   options = {
@@ -335,31 +353,61 @@ in
         ";
       };
 
+      appendMasterConf = mkOption {
+        type = types.lines;
+        default = "";
+        example = "submission inet n - n - - smtpd";
+        description = ''
+          Configuration lines to be appended to the end of the master.cf file.
+          Can be called more than once, with additional calls being concatenated onto
+          the end
+        '';
+      };
+
       extraMasterConf = mkOption {
         default = "";
         example = "submission inet n - n - - smtpd";
         description = "Extra lines to append to the generated master.cf file.";
       };
 
-      useDovecotSaslAuth = mkOption {
-        default = false;
-        description = ''
-	  Whether to use Dovecot for SASL SMTP auth.
-	  Note: This enables dovecot2 and makes Postfix listen on SMTP submission
-	  port 587 for SASL-authenticated email submissions
-	'';
+      virtualTransport = mkOption {
+        default = null;
+        description = "Postfix virtual_transport setting";
+      };
+
+      mailboxTransport = mkOption {
+        default = null;
+        description = "Postfix mailbox_transport setting";
       };
 
       smtpdRelayRestrictions = mkOption {
         default = null;
         description = "List of SMTP relay restrictions (Postfix's smtpd_relay_restrictions setting) settings";
       };
+
+      useDovecotSaslAuth = mkOption {
+        default = false;
+        description = ''
+          Whether to use Dovecot for SASL SMTP auth.
+          Note: This enables dovecot2 and makes Postfix listen on SMTP submission
+          port 587 for SASL-authenticated email submissions
+        '';
+      };
+
+      useVirtualMailboxOwner = mkOption {
+        default = false;
+        description = "If enabled, mailboxes will all be owned by a single virtual user";
+      };
+
+      useDspam = mkOption {
+        default = false;
+        description = "Whether to process received emails through DSPAM. Overrides virtualTransport setting";
+      };
    };
 };
 
 
   ###### implementation
-
   config = mkIf config.services.postfix.enable {
 
     environment = {
@@ -372,7 +420,7 @@ in
       systemPackages = [ pkgs.postfix ];
     };
 
-    services.mail.sendmailSetuidWrapper = mkIf config.services.postfix.setSendmail {
+    services.mail.sendmailSetuidWrapper = mkIf cfg.setSendmail {
       program = "sendmail";
       source = "${pkgs.postfix}/bin/sendmail";
       owner = "nobody";
@@ -381,13 +429,19 @@ in
       setgid = true;
     };
 
-    users.extraUsers = singleton
-      { name = user;
-        description = "Postfix mail server user";
-        uid = config.ids.uids.postfix;
-        group = group;
-      };
+    services.mail.createVirtualMailboxOwner = mkIf cfg.useVirtualMailboxOwner true;
 
+    services.dspam.enable = mkIf cfg.useDspam true;
+
+    users.extraUsers =
+      [
+        { name = user;
+          description = "Postfix mail server user";
+          uid = config.ids.uids.postfix;
+          group = group;
+        }
+      ];
+    
     users.extraGroups =
       [ { name = group;
           gid = config.ids.gids.postfix;
@@ -397,15 +451,19 @@ in
         }
       ];
 
-    services.dovecot2 = mkIf config.services.postfix.useDovecotSaslAuth {
+    services.dovecot2 = mkIf cfg.useDovecotSaslAuth {
       enable = true;
       appendAuth = ''
-        unix_listener /var/postfix/private/auth {
+        unix_listener /var/postfix/private/auth-client {
           mode = 0660
           user = ${user}
           group = ${group}
         }
       '';
+    };
+
+    services.postfix = mkIf cfg.useDspam {
+      virtualTransport = "dspam";
     };
 
     jobs.postfix =
@@ -424,7 +482,7 @@ in
         preStart =
           ''
             ${pkgs.coreutils}/bin/mkdir -p /var/spool/mail /var/postfix/conf /var/postfix/queue
-          '' + optionalString config.services.postfix.useDovecotSaslAuth ''
+          '' + optionalString cfg.useDovecotSaslAuth ''
             ${pkgs.coreutils}/bin/mkdir -p /var/postfix/private
           ''
           + ''
@@ -455,5 +513,4 @@ in
       };
 
   };
-
 }

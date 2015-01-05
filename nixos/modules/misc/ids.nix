@@ -173,6 +173,8 @@
       peerflix = 163;
       chronos = 164;
       gitlab = 165;
+      vmail = 166;
+      dspam = 167;
 
       # When adding a uid, make sure it doesn't match an existing gid. And don't use uids above 399!
 
@@ -310,6 +312,8 @@
       kubernetes = 158;
       fleet = 159;
       gitlab = 160;
+      vmail = 166;
+      dspam = 167;
 
       # When adding a gid, make sure it doesn't match an existing uid. And don't use gids above 399!
 

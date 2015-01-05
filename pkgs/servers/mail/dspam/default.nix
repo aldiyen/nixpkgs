@@ -20,6 +20,8 @@ stdenv.mkDerivation rec {
   buildInputs = [ postgresql mysql sqlite zlib ];
 
   configureFlags = [
+    "--enable-daemon"
+    "--sysconfdir=/etc/"
     "--with-storage-driver=${storageDrivers}"
   ] ++ stdenv.lib.optional (postgresql != null) [
     "--with-pgsql-includes=${postgresql}/include/"

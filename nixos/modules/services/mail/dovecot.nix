@@ -10,21 +10,35 @@ let
     ''
       base_dir = /var/run/dovecot2/
 
-      protocols = ${optionalString cfg.enableImap "imap"} ${optionalString cfg.enablePop3 "pop3"}
+      protocols = ${optionalString cfg.enableImap "imap"} ${optionalString cfg.enablePop3 "pop3"} ${optionalString cfg.enableLmtp "lmtp"}
     ''
     + (if cfg.enableSsl then
     ''
+
       ssl_cert = <${cfg.sslServerCert}
       ssl_key = <${cfg.sslServerKey}
       ssl_ca = <${cfg.sslCACert}
       disable_plaintext_auth = yes
       ssl = required
     '' else ''
+
       ssl = no
       disable_plaintext_auth = no
     '')
+    + (if cfg.useVirtualMailboxOwner then ''
 
+      mail_uid = ${toString config.ids.uids.vmail}
+      mail_gid = ${toString config.ids.gids.vmail}
+      userdb {
+        driver = static
+      }
+    '' else ''
+      userdb {
+        driver = passwd
+      }
+    '')
     + ''
+
       default_internal_user = ${cfg.user}
 
       mail_location = ${cfg.mailLocation}
@@ -36,18 +50,26 @@ let
         user = root
         ${cfg.appendAuth}
       }
-      userdb {
-        driver = passwd
-      }
       passdb {
         driver = pam
         args = ${optionalString cfg.showPAMFailure "failure_show_msg=yes"} dovecot2
       }
+    ''
+    + optionalString cfg.enableLmtp ''
+
+      service lmtp {
+        user = root
+        ${cfg.appendLmtp}
+      }
+    ''
+    + ''
 
       pop3_uidl_format = %08Xv%08Xu
     '' + cfg.extraConfig;
 
   confFile = pkgs.writeText "dovecot.conf" dovecotConf;
+
+#  confLink = pkgs.runCommand "ln -sf ${dovecotConf} ${pkgs.dovecot2}/etc/dovecot/dovecot.conf";
 
 in
 
@@ -123,12 +145,29 @@ in
         description = "Show the PAM failure message on authentication error (useful for OTPW).";
       };
 
+      useVirtualMailboxOwner = mkOption {
+        default = false;
+        description = "If enabled, mailboxes will all be owned by a single virtual user";
+      };
+
       appendAuth = mkOption {
         type = types.lines;
         default = "";
         description = ''
-            Configuration lines to be appended inside of the service auth {} block. Can be called
-            more than once, with additional calls being concatenated onto the end
+            Configuration lines to be appended inside of the service auth {} block
+        '';
+      };
+
+      enableLmtp = mkOption {
+        default = false;
+        description = "Enables Dovecot's LMTP service";
+      };
+
+      appendLmtp = mkOption {
+        type = types.lines;
+        default = "";
+        description = ''
+            Configuration lines to be appended inside of the service lmtp {} block
         '';
       };
     };
@@ -141,6 +180,8 @@ in
   config = mkIf config.services.dovecot2.enable {
 
     security.pam.services.dovecot2 = {};
+
+    services.mail.createVirtualMailboxOwner = mkIf cfg.useVirtualMailboxOwner true;
 
     users.extraUsers = [
       { name = cfg.user;
@@ -155,10 +196,11 @@ in
       }
     ];
 
-    users.extraGroups = singleton
+    users.extraGroups = [
       { name = cfg.group;
         gid = config.ids.gids.dovecot2;
-      };
+      }
+    ];
 
     jobs.dovecot2 =
       { description = "Dovecot IMAP/POP3 server";
