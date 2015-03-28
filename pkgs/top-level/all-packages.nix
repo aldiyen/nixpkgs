@@ -7553,6 +7553,8 @@ let
 
   dovecot22 = callPackage ../servers/mail/dovecot/2.2.x.nix { };
 
+  dovecot-antispam = callPackage ../servers/mail/dovecot/plugins/antispam.nix { };
+
   dovecot_pigeonhole = callPackage ../servers/mail/dovecot-pigeonhole { };
 
   dspam = callPackage ../servers/mail/dspam { };

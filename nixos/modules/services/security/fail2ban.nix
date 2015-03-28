@@ -133,6 +133,7 @@ in
     # sets default values for all other jails.
     services.fail2ban.jails.DEFAULT =
       ''
+        enabled  = True
         ignoreip = 127.0.0.1/8
         bantime  = 600
         findtime = 600

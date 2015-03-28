@@ -209,6 +209,18 @@ in
 
         preStart =
           ''
+            for directory in ${pkgs.dovecot}/lib/dovecot ${pkgs.dovecot-antispam} ${pkgs.dovecot_pigeonhole}/lib/dovecot; do
+              find $directory -mindepth 1 -maxdepth 1 -type f | while read file; do
+                ln -sf $file /var/lib/dovecot/modules/$(basename $file)
+              done;
+              find $directory -mindepth 2 -maxdepth 2 -type f | while read file; do
+                dn=$(dirname $file)
+                bn=$(basename $file)
+                mkdir -p /var/lib/dovecot/modules/$dn
+                ln -sf $file /var/lib/dovecot/modules/$dn/$bn
+              done;
+            done;
+	    touch /var/lib/dovecot/modules/blah.txt
             ${pkgs.coreutils}/bin/mkdir -p /var/run/dovecot2 /var/run/dovecot2/login
             ${pkgs.coreutils}/bin/chown -R ${cfg.user}:${cfg.group} /var/run/dovecot2
           '';

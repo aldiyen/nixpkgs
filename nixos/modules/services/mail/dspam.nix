@@ -142,7 +142,7 @@ let
     ServerIdent     "${cfg.serverIdent}"
     ServerDomainSocketPath "${cfg.serverSocketPath}"
     ClientHost      ${cfg.serverSocketPath}
-    ClientIdent     "${cfg.relayPass}"
+    ClientIdent     "${cfg.relayPass}@Relay1"
   ''
   + ''
     ProcessorURLContext on
@@ -217,7 +217,7 @@ in
       };
 
       serverParameters = mkOption {
-        default = "--user dspam --deliver=innocent -d %u";
+        default = "--user dspam --deliver=innocent,spam -d %u";
 	description = "DSPAM ServerParameters setting, for use with daemon mode";
       };
 
@@ -275,6 +275,24 @@ in
       source = pkgs.writeText "dspam.conf" configFile;
       target = "dspam.conf";
     };
+
+# FIXME this isn't working and I don't know why!
+#    systemd.services.dspam = { 
+#      description = "DSPAM email spam filter";
+#      after = [ "network.target" ];
+#      wantedBy = [ "multi-user.target" ];
+#
+#      # FIXME somehow I need to make the dovecot LMTP socket directory before dovecot starts
+#
+#      preStart = ''
+#        ${pkgs.coreutils}/bin/mkdir -p /var/run/dspam/ /var/dspam/
+#        chown -R dspam:dspam /var/run/dspam/ /var/dspam/
+#      '';
+#
+#      serviceConfig = {
+#        ExecStart = "${pkgs.dspam}/bin/dspam --daemon --nofork";
+#      };
+#    };
 
     jobs.dspam = {
       description = "DSPAM email spam filter";

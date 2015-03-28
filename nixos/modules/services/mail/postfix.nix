@@ -75,18 +75,22 @@ let
       smtpd_relay_restrictions = ${concatStringsSep ", " cfg.smtpdRelayRestrictions}
     ''
     + optionalString cfg.enableSsl ''
-
+      ${optionalString cfg.useSslCertificateForOutboundConnections ''
+        # Certificate presented to remote servers when acting as a client
+        smtp_tls_cert_file = ${cfg.sslCert}
+        smtp_tls_key_file = ${cfg.sslKey}
+      ''}
+      # Use TLS when acting as a client (i.e. when sending mail), if possible
+      smtp_tls_security_level = may
       smtp_tls_CAfile = ${cfg.sslCACert}
-      smtp_tls_cert_file = ${cfg.sslCert}
-      smtp_tls_key_file = ${cfg.sslKey}
 
-      smtp_use_tls = yes
-
+      # SSL certificate used for incoming connections
       smtpd_tls_CAfile = ${cfg.sslCACert}
       smtpd_tls_cert_file = ${cfg.sslCert}
       smtpd_tls_key_file = ${cfg.sslKey}
 
-      smtpd_use_tls = yes
+      # Offer incoming clients the option of using TLS
+      smtpd_tls_security_level = may
     ''
     + optionalString(cfg.useDovecotSaslAuth) ''
       smtpd_sasl_type = dovecot
@@ -323,13 +327,22 @@ in
         description = "Whether to enable SSL. Make sure to define the SSL cert paths as well!";
       };
 
+      useSslCertificateForOutboundConnections = mkOption {
+        default = false;
+	description = ''
+          Whether to present a certificate during SSL negotiation when Postfix is sending mail.
+	  Note that this can be dangerous, as the communication will fail if the remote mail server
+          does not recognize the client certificate. This setting is not generally required.
+        '';
+      };
+
       sslCert = mkOption {
         default = "";
         description = "SSL certificate to use.";
       };
 
       sslCACert = mkOption {
-        default = "";
+        default = "/etc/ssl/certs/ca-bundle.crt";
         description = "SSL certificate of CA.";
       };
 
